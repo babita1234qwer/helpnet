@@ -1,0 +1,24 @@
+@import "tailwindcss";
+@plugin "daisyui";
+/* Fade in + fade out loop */
+/* Fade in + fade out loop */
+@keyframes fadeInOut {
+  0%, 100% { opacity: 0; transform: translateY(10px); }
+  50% { opacity: 1; transform: translateY(0); }
+}
+
+.continuous-fade {
+  animation: fadeInOut 5s ease-in-out infinite; /* slower than before */
+}
+
+/* Stagger delays for lines */
+.continuous-fade-delay-1 { animation-delay: 0s; }
+.continuous-fade-delay-2 { animation-delay: 1.5s; }
+.continuous-fade-delay-3 { animation-delay: 3s; }
+.hero-section {
+  background-image: url('./slider-bg3.jpg'); /* make sure image is in public/images */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative; /* needed for overlay if added */
+}
