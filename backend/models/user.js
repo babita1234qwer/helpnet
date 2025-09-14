@@ -1,68 +1,100 @@
-// models/User.js
 const mongoose = require("mongoose");
+const { Schema } = mongoose;
 
-const UserSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true
-  },
-
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true
-  },
-
-  password: {
-    type: String,
-    required: true,
-    minlength: 6,
-    
-  },
-
-  role: {
-    type: String,
-    enum: ["requester", "helper", "admin"],
-    default: "requester"
-  },
-
-  phone: {
-    type: String,
-    match: /^[0-9]{10}$/,
-     required: true
-
-  },
-
-  // 🔹 Location field for Live Map & Geo Queries
-  location: {
-    type: {
+const userSchema = new Schema(
+  {
+    name: {
       type: String,
-      enum: ["Point"],
-      default: "Point"
+      required: true,
+      trim: true,
     },
-    coordinates: {
-      type: [Number], // [longitude, latitude]
-      default: [0, 0]
-    }
+
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
+
+    password: {
+      type: String,
+      required: true,
+    },
+
+    phone: {
+      type: String,
+      trim: true,
+    },
+
+    skills: [
+      {
+        type: String,
+        enum: [
+          "first_aid",
+          "cpr",
+          "fire_safety",
+          "search_rescue",
+          "medical",
+          "emergency_response",
+          "other",
+        ],
+      },
+    ],
+
+    certifications: [
+      {
+        name: { type: String, required: true }, // e.g. "CPR Training"
+        issuer: String, // who issued it
+        expiryDate: Date,
+      },
+    ],
+
+    currentLocation: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: [0, 0],
+      },
+      updatedAt: { type: Date, default: Date.now },
+    },
+
+    availability: {
+      type: Boolean,
+      default: true,
+    },
+
+    trustScore: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: 3,
+    },
+
+    responseHistory: [
+      {
+        emergencyId: {
+          type: Schema.Types.ObjectId,
+          ref: "Emergency",
+        },
+        responseTime: Number, // in seconds
+        feedbackRating: { type: Number, min: 1, max: 5 },
+      },
+    ],
   },
-
-  // 🔹 Resources the helper can provide
-  resources: [String], // e.g., ["food", "water", "medicine"]
-
-  verified: {
-    type: Boolean,
-    default: false // Admin verification
-  },
-
-  createdAt: {
-    type: Date,
-    default: Date.now
+  {
+    timestamps: true, // adds createdAt + updatedAt automatically
   }
-});
+);
 
-// 🔹 2dsphere index for geospatial queries (nearest helpers / requests)
-UserSchema.index({ location: "2dsphere" });
+// Geospatial index for location-based queries
+userSchema.index({ "currentLocation.coordinates": "2dsphere" });
 
-module.exports = mongoose.model("User", UserSchema);
+const User = mongoose.model("User", userSchema);
+
+module.exports = User;
+
