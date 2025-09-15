@@ -13,8 +13,12 @@ const userSchema = new Schema(
       type: String,
       required: true,
       unique: true,
-      lowercase: true,
+    
       trim: true,
+    },
+    isAuthenticated:{
+      type:Boolean,
+      default:false
     },
 
     password: {

@@ -11,13 +11,20 @@
   },
   "dependencies": {
     "@heroui/react": "^2.8.4",
+    "@hookform/resolvers": "^5.2.2",
+    "@react-google-maps/api": "^2.20.7",
+    "@reduxjs/toolkit": "^2.9.0",
     "@tailwindcss/vite": "^4.1.13",
     "axios": "^1.12.1",
     "daisyui": "^5.1.10",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-hook-form": "^7.62.0",
+    "react-redux": "^9.2.0",
     "react-router-dom": "^7.9.1",
-    "tailwindcss": "^4.1.13"
+    "redux": "^5.0.1",
+    "tailwindcss": "^4.1.13",
+    "zod": "^4.1.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

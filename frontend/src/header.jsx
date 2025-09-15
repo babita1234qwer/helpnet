@@ -1,4 +1,9 @@
 import './index.css';
+import {useState} from "react";
+import { useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
+import { logoutUser } from './authslice'; 
+
 import {
   Navbar,
   NavbarBrand,
@@ -10,6 +15,7 @@ import {
   DropdownMenu,
   DropdownItem,
   Avatar,
+  Button
 } from "@heroui/react";
 
 export const HelpNetLogo = () => (
@@ -30,6 +36,13 @@ export const HelpNetLogo = () => (
 );
 
 export default function NavbarHelpNet() {
+  const {isAuthenticated,user,loading} = useSelector((state) => state.auth);
+  const dispatch = useDispatch();
+  const handleLogout = () => {
+  dispatch(logoutUser());
+  setSolvedProblems([]);
+};
+
   return (
     <>
     <Navbar className="w-full fixed top-0 left-0 z-50 bg-blue-600 px-6 py-3" maxWidth="none">
@@ -90,7 +103,7 @@ export default function NavbarHelpNet() {
 
       {/* Right: Profile Dropdown */}
       <NavbarContent as="div" justify="end" className="flex-shrink-0">
-        <Dropdown placement="bottom-end">
+        {isAuthenticated?(<Dropdown placement="bottom-end">
           <DropdownTrigger>
             <Avatar
               isBordered
@@ -105,19 +118,29 @@ export default function NavbarHelpNet() {
           
             <DropdownItem className="h-14 gap-2 flex-col">
               <p className="font-semibold">Signed in as</p>
-              <p className="font-semibold">user@helpnet.org</p>
+              <p className="font-semibold">{user.email}</p>
             </DropdownItem>
             <DropdownItem>Dashboard</DropdownItem>
             <DropdownItem>Settings</DropdownItem>
             <DropdownItem>Help & Feedback</DropdownItem>
-            <DropdownItem color="danger">Log Out</DropdownItem>
+            <DropdownItem color="danger" onClick={handleLogout}>Log Out
+</DropdownItem>
             
             </DropdownMenu>
-          
+            </Dropdown>):(
+          <Button
+              as={Link}
+              href="/user/login"
+              color="secondary"
+              variant="flat"
+              className="font-medium"
+            >
+              Login
+            </Button>
 
           
-
-        </Dropdown>
+        )}
+        
       </NavbarContent>
 
     </Navbar>
