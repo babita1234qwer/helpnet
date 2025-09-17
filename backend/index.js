@@ -11,6 +11,7 @@ const main=require('./config/db');
 const cookieparser=require('cookie-parser');
 const cors=require('cors');
 const authrouter=require('./routes/userauth');
+const emergencyRouter = require('./routes/emergency');
 const io = new Server(server, {
   cors: {
     origin:[
@@ -31,6 +32,7 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieparser());
 app.use('/user',authrouter);
+app.use('/emergency', emergencyRouter);
 const initialiseconnection=async()=>{
       try{
         await Promise.all([main(),redisclient.connect()]);

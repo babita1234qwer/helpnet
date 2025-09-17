@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useDispatch } from 'react-redux';
 import { logoutUser } from './authslice'; 
 
+
 import {
   Navbar,
   NavbarBrand,
@@ -56,11 +57,17 @@ export default function NavbarHelpNet() {
 
       {/* Center Menu Items */}
       <NavbarContent className="flex gap-6 justify-evenly flex-grow">
-        <NavbarItem>
-            <Link color="foreground" href="/requests" className="text-white font-medium text-lg hover:text-blue-200 transition-colors">
-          Requests
-        </Link>
-        </NavbarItem>
+        
+  <Button
+              as={Link}
+              href="/emergency/create"
+              color="secondary"
+              variant="flat"
+              className="font-medium"
+            >
+              Report
+            </Button>
+        
         <NavbarItem>
           <Link color="foreground" href="/volunteers" className="text-white font-medium text-lg hover:text-blue-200 transition-colors">
             Volunteers

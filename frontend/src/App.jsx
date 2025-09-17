@@ -5,6 +5,7 @@ import { checkAuth } from './authslice.js';
 import { useDispatch,useSelector } from 'react-redux';
 import { useEffect } from 'react';
 import Signup from "./pages/signup";
+import EmergencyRequest from "./pages/EmergencyRequest.jsx";
 
  
 
@@ -19,6 +20,7 @@ useEffect(() => {
       <Route path="/" element={<Homepage/>}/>
        <Route path="/user/login" element={ isAuthenticated?<Navigate to="/"/>:<Login></Login>} />
       <Route path="/user/register" element={ isAuthenticated?<Navigate to="/"/>:<Signup></Signup>} />
+      <Route path="/emergency/create" element={<EmergencyRequest></EmergencyRequest>} />
     </Routes>
   )
 }

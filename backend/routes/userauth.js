@@ -12,9 +12,9 @@ authRouter.post('/logout', userMiddleware, logout);
 authRouter.post('/admin/register', adminMiddleware ,adminregister);
 //authRouter.delete('/deleteProfile',userMiddleware,deleteProfile);
 // authRouter.get('/getProfile',getProfile);
-authRouter.get('/me', userMiddleware, (req, res) => {
-  res.status(200).json(req.user); // req.user contains user details from token
-})
+authRouter.get('/check', userMiddleware, (req, res) => {
+  res.status(200).json({ user: req.user }); // wrap in { user: ... }
+});
 
 module.exports = authRouter;
 

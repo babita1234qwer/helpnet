@@ -2,7 +2,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const redisclient = require("../config/redis");
 
-
+const JWT_SECRET = "01b0142fc8369a6b8046bc0f6fbbda6b910b173fa0b5ae6af833cb48107a5892";
 
 
 const adminMiddleware = async (req, res, next) => {
@@ -11,9 +11,9 @@ const adminMiddleware = async (req, res, next) => {
         if(!token){
             throw new Error("missing token");
         }
-        console.log(process.env.JWT_SECRET);
+        console.log(JWT_SECRET);
         let payload;
-        try{ payload=jwt.verify(token,process.env.JWT_SECRET);}
+        try{ payload=jwt.verify(token,JWT_SECRET);}
         catch(err){
             console.log(err);   }
         

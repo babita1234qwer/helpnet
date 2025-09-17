@@ -1,52 +1,49 @@
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useDispatch, useSelector } from 'react-redux';
-import { createEmergency } from '../store/emergencySlice'; // adjust path as needed
-import { useNavigate } from 'react-router';
-import { useEffect } from 'react';
+import { useDispatch } from 'react-redux';
+import axiosClient from '../utils/axiosclient';
 
 const emergencySchema = z.object({
   emergencyType: z.string().min(1, 'Type is required'),
   emergencySubtype: z.string().optional(),
   description: z.string().min(10, 'Description must be at least 10 characters'),
   address: z.string().min(1, 'Address is required'),
-  coordinates: z.string().min(1, 'Coordinates required'), // comma separated
+  latitude: z.string().min(1, 'Latitude is required'),
+  longitude: z.string().min(1, 'Longitude is required'),
 });
 
 function EmergencyRequest() {
   const dispatch = useDispatch();
-  const navigate = useNavigate();
-  const { loading, error, success } = useSelector((state) => state.emergency);
   const { register, handleSubmit, formState: { errors } } = useForm({ resolver: zodResolver(emergencySchema) });
 
-  useEffect(() => {
-    if (success) {
-      navigate('/');
+  const submitteddata = async (data) => {
+    try {
+      const payload = {
+  emergencyType: data.emergencyType,
+  emergencySubtype: data.emergencySubtype,
+  description: data.description,
+  longitude: parseFloat(data.longitude),
+  latitude: parseFloat(data.latitude),
+  location: {
+    type: 'Point',
+    coordinates: [parseFloat(data.longitude), parseFloat(data.latitude)],
+    address: data.address,
+  },
+};
+      
+      await axiosClient.post('/emergency/create', payload);
+      alert('Emergency submitted successfully!');
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || "Submission failed");
     }
-  }, [success, navigate]);
-
-  const submitteddata = (data) => {
-    // Parse coordinates string to array
-    const coordsArr = data.coordinates.split(',').map(Number);
-    const payload = {
-      emergencyType: data.emergencyType,
-      emergencySubtype: data.emergencySubtype,
-      description: data.description,
-      location: {
-        type: 'Point',
-        coordinates: coordsArr,
-        address: data.address,
-      },
-    };
-    dispatch(createEmergency(payload));
   };
 
   return (
     <div className="min-h-screen flex justify-center items-center bg-neutral-900 px-4">
       <div className="bg-neutral-800 shadow-lg rounded-2xl p-10 w-full max-w-md border border-neutral-700">
         <h1 className="text-4xl font-bold text-white text-center mb-2">
-          <span className="inline-block animate-bounce">🚨</span> Emergency Request
+          <span className="inline-block animate-bounce">🚨</span> Report
         </h1>
         <h2 className="text-lg text-gray-400 text-center mb-6">
           Please fill out the emergency details below.
@@ -64,32 +61,41 @@ function EmergencyRequest() {
             </select>
             {errors.emergencyType && <span className="text-red-400 text-sm">{errors.emergencyType.message}</span>}
           </div>
+
           <div className="mb-4">
             <label className="block text-sm text-gray-300 mb-1" htmlFor="emergencySubtype">Subtype</label>
             <input {...register('emergencySubtype')} id="emergencySubtype" className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded" />
           </div>
+
           <div className="mb-4">
             <label className="block text-sm text-gray-300 mb-1" htmlFor="description">Description</label>
             <textarea {...register('description')} id="description" className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded" />
             {errors.description && <span className="text-red-400 text-sm">{errors.description.message}</span>}
           </div>
+
           <div className="mb-4">
             <label className="block text-sm text-gray-300 mb-1" htmlFor="address">Address</label>
             <input {...register('address')} id="address" className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded" />
             {errors.address && <span className="text-red-400 text-sm">{errors.address.message}</span>}
           </div>
+
           <div className="mb-4">
-            <label className="block text-sm text-gray-300 mb-1" htmlFor="coordinates">Coordinates (lng,lat)</label>
-            <input {...register('coordinates')} id="coordinates" className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded" />
-            {errors.coordinates && <span className="text-red-400 text-sm">{errors.coordinates.message}</span>}
+            <label className="block text-sm text-gray-300 mb-1" htmlFor="latitude">Latitude</label>
+            <input {...register('latitude')} id="latitude" className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded" />
+            {errors.latitude && <span className="text-red-400 text-sm">{errors.latitude.message}</span>}
           </div>
-          {error && <div className="mb-4 text-red-500 text-sm text-center">{error}</div>}
+
+          <div className="mb-4">
+            <label className="block text-sm text-gray-300 mb-1" htmlFor="longitude">Longitude</label>
+            <input {...register('longitude')} id="longitude" className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded" />
+            {errors.longitude && <span className="text-red-400 text-sm">{errors.longitude.message}</span>}
+          </div>
+
           <button
             type="submit"
             className="w-full bg-orange-500 hover:bg-orange-400 text-white py-2 rounded-md font-semibold transition duration-150"
-            disabled={loading}
           >
-            {loading ? 'Submitting...' : 'Submit Emergency'}
+            Submit
           </button>
         </form>
       </div>
