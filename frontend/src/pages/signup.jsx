@@ -4,10 +4,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useDispatch, useSelector } from 'react-redux';
 import { registerUser } from '../authslice';
 import { useNavigate } from 'react-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 const signupSchema = z.object({
-  name: z.string().min(1, 'First name is required'),
+  name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email address'),
   password: z
     .string()
@@ -17,19 +17,55 @@ const signupSchema = z.object({
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/,
       'Password must include uppercase, lowercase, number, and special character'
     ),
+  phone: z.string().optional(),
+  skills: z.array(z.string()).optional(),
+  notificationPreferences: z.object({
+    push: z.boolean().default(true),
+    email: z.boolean().default(true),
+    sms: z.boolean().default(false),
+    emergencyAlerts: z.boolean().default(true),
+    responseUpdates: z.boolean().default(true),
+    systemNotifications: z.boolean().default(true),
+  }).optional(),
 });
+
+const skillOptions = [
+  "first_aid",
+  "cpr",
+  "fire_safety",
+  "search_rescue",
+  "medical",
+  "emergency_response",
+  "other",
+];
 
 function Signup() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { isAuthenticated } = useSelector((state) => state.auth);
+  const { isAuthenticated, isLoading, error } = useSelector((state) => state.auth);
+  const [selectedSkills, setSelectedSkills] = useState([]);
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    push: true,
+    email: true,
+    sms: false,
+    emergencyAlerts: true,
+    responseUpdates: true,
+    systemNotifications: true,
+  });
 
   const {
     register,
     handleSubmit,
     setError,
+    setValue,
     formState: { errors },
-  } = useForm({ resolver: zodResolver(signupSchema) });
+  } = useForm({ 
+    resolver: zodResolver(signupSchema),
+    defaultValues: {
+      notificationPreferences: notificationPrefs,
+      skills: selectedSkills,
+    }
+  });
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -37,9 +73,50 @@ function Signup() {
     }
   }, [isAuthenticated, navigate]);
 
+  const handleSkillToggle = (skill) => {
+    const updatedSkills = selectedSkills.includes(skill)
+      ? selectedSkills.filter(s => s !== skill)
+      : [...selectedSkills, skill];
+    
+    setSelectedSkills(updatedSkills);
+    setValue('skills', updatedSkills);
+  };
+
+  const handleNotificationPrefChange = (pref) => {
+    const updatedPrefs = {
+      ...notificationPrefs,
+      [pref]: !notificationPrefs[pref]
+    };
+    
+    setNotificationPrefs(updatedPrefs);
+    setValue('notificationPreferences', updatedPrefs);
+  };
+
   const submitteddata = async (data) => {
     try {
-      const resultAction = await dispatch(registerUser(data));
+      // Format data to match backend schema
+      const formattedData = {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        phone: data.phone || '',
+        skills: data.skills || [],
+        notificationPreferences: data.notificationPreferences,
+        // Set default values for other fields
+        isAuthenticated: false,
+        currentLocation: {
+          type: "Point",
+          coordinates: [0, 0],
+        },
+        lastUpdated: new Date(),
+        availabilityStatus: true,
+        trustScore: 3,
+        responseHistory: [],
+        certifications: [],
+        deviceTokens: [],
+      };
+
+      const resultAction = await dispatch(registerUser(formattedData));
       if (registerUser.rejected.match(resultAction)) {
         setError('root', {
           type: 'manual',
@@ -58,10 +135,10 @@ function Signup() {
     <div className="min-h-screen flex flex-col justify-center items-center bg-neutral-900 px-4">
       <div className="bg-neutral-800 shadow-xl rounded-2xl p-10 w-full max-w-md border border-neutral-700">
         <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-2 text-center">
-          <span className="inline-block animate-bounce">🚀</span> CodeCrack
+          <span className="inline-block animate-bounce">🚀</span> Emergency Response
         </h1>
         <h2 className="text-lg text-gray-400 mb-6 font-semibold text-center">
-          Create your account
+          Create your responder account
         </h2>
 
         {errors.root && (
@@ -72,11 +149,11 @@ function Signup() {
 
         <form className="w-full" onSubmit={handleSubmit(submitteddata)}>
           <div className="mb-4">
-            <label className="block text-sm text-gray-300 mb-1" htmlFor="username">Username</label>
+            <label className="block text-sm text-gray-300 mb-1" htmlFor="name">Full Name</label>
             <input
               {...register('name')}
               type="text"
-              id="username"
+              id="name"
               className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded focus:outline-none focus:ring-2 focus:ring-orange-400"
             />
             {errors.name && <span className="text-red-400 text-sm">{errors.name.message}</span>}
@@ -94,6 +171,17 @@ function Signup() {
           </div>
 
           <div className="mb-4">
+            <label className="block text-sm text-gray-300 mb-1" htmlFor="phone">Phone (Optional)</label>
+            <input
+              {...register('phone')}
+              type="tel"
+              id="phone"
+              className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded focus:outline-none focus:ring-2 focus:ring-orange-400"
+            />
+            {errors.phone && <span className="text-red-400 text-sm">{errors.phone.message}</span>}
+          </div>
+
+          <div className="mb-4">
             <label className="block text-sm text-gray-300 mb-1" htmlFor="password">Password</label>
             <input
               {...register('password')}
@@ -108,11 +196,52 @@ function Signup() {
             </p>
           </div>
 
+          <div className="mb-4">
+            <label className="block text-sm text-gray-300 mb-2">Your Skills (Optional)</label>
+            <div className="flex flex-wrap gap-2">
+              {skillOptions.map((skill) => (
+                <button
+                  key={skill}
+                  type="button"
+                  onClick={() => handleSkillToggle(skill)}
+                  className={`px-3 py-1 text-xs rounded-full ${
+                    selectedSkills.includes(skill)
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-neutral-700 text-gray-300'
+                  }`}
+                >
+                  {skill.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm text-gray-300 mb-2">Notification Preferences</label>
+            <div className="space-y-2">
+              {Object.entries(notificationPrefs).map(([key, value]) => (
+                <div key={key} className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id={`pref-${key}`}
+                    checked={value}
+                    onChange={() => handleNotificationPrefChange(key)}
+                    className="mr-2 h-4 w-4 text-orange-500 focus:ring-orange-400 border-neutral-600 rounded bg-neutral-700"
+                  />
+                  <label htmlFor={`pref-${key}`} className="text-sm text-gray-300">
+                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <button
             type="submit"
-            className="w-full bg-orange-500 hover:bg-orange-400 text-white py-2 rounded-md font-semibold transition duration-150"
+            disabled={isLoading}
+            className="w-full bg-orange-500 hover:bg-orange-400 text-white py-2 rounded-md font-semibold transition duration-150 disabled:opacity-50"
           >
-            Sign Up
+            {isLoading ? 'Creating Account...' : 'Sign Up'}
           </button>
         </form>
 

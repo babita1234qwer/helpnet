@@ -79,17 +79,19 @@ function EmergencyRequest() {
             {errors.address && <span className="text-red-400 text-sm">{errors.address.message}</span>}
           </div>
 
-          <div className="mb-4">
-            <label className="block text-sm text-gray-300 mb-1" htmlFor="latitude">Latitude</label>
-            <input {...register('latitude')} id="latitude" className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded" />
-            {errors.latitude && <span className="text-red-400 text-sm">{errors.latitude.message}</span>}
-          </div>
-
+ 
           <div className="mb-4">
             <label className="block text-sm text-gray-300 mb-1" htmlFor="longitude">Longitude</label>
             <input {...register('longitude')} id="longitude" className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded" />
             {errors.longitude && <span className="text-red-400 text-sm">{errors.longitude.message}</span>}
           </div>
+                    <div className="mb-4">
+                                  <label className="block text-sm text-gray-300 mb-1" htmlFor="latitude">Latitude</label>
+
+            <input {...register('latitude')} id="longitude" className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded" />
+            {errors.latitude && <span className="text-red-400 text-sm">{errors.latitude.message}</span>}
+          </div>
+
 
           <button
             type="submit"

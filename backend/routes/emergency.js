@@ -7,7 +7,7 @@ const userMiddleware = require('../middleware/usermiddeware');
 emergencyRouter.post('/create', userMiddleware, createEmergency);
 
 // Get all active emergencies
-emergencyRouter.get('/active', userMiddleware, getActiveEmergencies);
+emergencyRouter.get("/all", userMiddleware, getActiveEmergencies);
 
 // Get nearby emergencies (requires longitude & latitude query params)
 emergencyRouter.get('/nearby', userMiddleware, getNearbyEmergencies);

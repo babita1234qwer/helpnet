@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Emergency = require("../models/emergency");
 const User = require("../models/user");
 const Notification = require("../models/notification");
@@ -9,6 +10,7 @@ try {
   // fallback: try to get from global if set
   io = global.io || null;
 }
+
 function successResponse(res, data, message = "Success", status = 200) {
   return res.status(status).json({
     success: true,
@@ -24,52 +26,128 @@ function errorResponse(res, message = "Error", status = 500, error = null) {
     error: error?.message || null,
   });
 }
+
 const emitToUser = (userId, event, data) => {
   if (io) {
     io.to(`user:${userId}`).emit(event, data);
   }
 };
+
 const emitToEmergency = (emergencyId, event, data) => {
   if (io) {
     io.to(`emergency:${emergencyId}`).emit(event, data);
   }
 };
+
 const emitToAll = (event, data) => {
   if (io) {
     io.emit(event, data);
   }
 };
-const EVENTS={
-    NEW_EMERGENCY:"newEmergency",
-    EMERGENCY_CREATED:"emergencyCreated",
-    RESPONDER_ADDED:"responderAdded",
-    RESPONDER_UPDATED:"responderUpdated",
-    EMERGENCY_STATUS_UPDATED:"emergencyStatusUpdated",
-    EMERGENCY_RESOLVED:"emergencyResolved",
-}
 
+const EVENTS = {
+  NEW_EMERGENCY: "newEmergency",
+  EMERGENCY_CREATED: "emergencyCreated",
+  RESPONDER_ADDED: "responderAdded",
+  RESPONDER_UPDATED: "responderUpdated",
+  EMERGENCY_STATUS_UPDATED: "emergencyStatusUpdated",
+  EMERGENCY_RESOLVED: "emergencyResolved",
+  NOTIFICATION_RECEIVED: "notificationReceived",
+};
+
+// Reverse geocoding with Nominatim (OpenStreetMap)
+const reverseGeocode = async (latitude, longitude) => {
+  try {
+    const response = await axios.get(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+      {
+        headers: {
+          'User-Agent': 'EmergencyApp/1.0 (contact@emergencyapp.com)'
+        }
+      }
+    );
+    
+    if (response.data && response.data.display_name) {
+      return response.data.display_name;
+    }
+  } catch (error) {
+    console.error("Error in Nominatim Reverse Geocoding:", error.message);
+  }
+  return "Unknown location";
+};
+
+// Get directions with OSRM (Open Source Routing Machine)
+const getDirections = async (startLng, startLat, endLng, endLat) => {
+  try {
+    const response = await axios.get(
+      `http://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=false`
+    );
+    
+    if (response.data && response.data.routes && response.data.routes.length > 0) {
+      return response.data.routes[0].duration; // duration in seconds
+    }
+  } catch (error) {
+    console.error("Error in OSRM Directions:", error.message);
+  }
+  return null;
+};
+
+// Helper function to create and send notifications
+const createNotification = async (userId, notificationData) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user) return null;
+    
+    // Check if user wants this type of notification
+    if (!user.wantsNotification(notificationData.type)) {
+      return null;
+    }
+    
+    const notification = new Notification({
+      userId,
+      ...notificationData,
+    });
+    
+    await notification.save();
+    
+    // Send real-time notification via socket
+    emitToUser(userId, EVENTS.NOTIFICATION_RECEIVED, {
+      notification: {
+        _id: notification._id,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        priority: notification.priority,
+        createdAt: notification.createdAt,
+      }
+    });
+    
+    // Here you would also integrate with push notification services
+    // like Firebase Cloud Messaging or Apple Push Notification Service
+    
+    return notification;
+  } catch (error) {
+    console.error("Error creating notification:", error);
+    return null;
+  }
+};
 
 const createEmergency = async (req, res) => {
   try {
-    const { emergencyType, description, longitude,latitude} = req.body;
+    const { emergencyType, description, longitude, latitude } = req.body;
     const userId = req.user._id;
 
     if (!emergencyType || !description || !longitude || !latitude) {
       return errorResponse(res, "Missing required fields", 400);
     }
 
-    // 📍 Reverse Geocoding with Google API
-    let address = "Unknown location";
-    try {
-      const geoRes = await axios.get(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${"AIzaSyBX2dkhTiyuh0Yji3uTeiuFy51BaeqXgCk"}`
-      );
-      if (geoRes.data.results?.length > 0) {
-        address = geoRes.data.results[0].formatted_address;
-      }
-    } catch (error) {
-      console.error("Error in Google Reverse Geocoding:", error.message);
+    // Validate coordinates
+    if (isNaN(parseFloat(longitude)) || isNaN(parseFloat(latitude))) {
+      return errorResponse(res, "Invalid coordinates", 400);
     }
+
+    // Get address using Nominatim
+    const address = await reverseGeocode(latitude, longitude);
 
     const emergency = new Emergency({
       createdBy: userId,
@@ -84,40 +162,47 @@ const createEmergency = async (req, res) => {
 
     await emergency.save();
 
-    // 🔎 Find nearby users (within 5km, updated within 30 mins)
+    // Find nearby users (within 5km, updated within 30 mins)
     const nearbyUsers = await User.find({
-      _id: { $ne: userId },
       availabilityStatus: true,
-      "currentLocation.lastUpdated": {
-        $gte: new Date(Date.now() - 30 * 60 * 1000),
-      },
-      "currentLocation.coordinates": {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [parseFloat(longitude), parseFloat(latitude)],
-          },
-          $maxDistance: 5000,
-        },
-      },
-    }).select("_id name");
+      lastUpdated: { $gte: new Date(Date.now() - 30 * 60 * 1000) },
+      currentLocation: {
+        $geoWithin: {
+          $centerSphere: [
+            [parseFloat(longitude), parseFloat(latitude)],
+            5000 / 6378137 // 5km in radians
+          ]
+        }
+      }
+    });
 
-    // Create notifications
-    const notifications = nearbyUsers.map((user) => ({
-      userId: user._id,
-      emergencyId: emergency._id,
-      type: "emergency_alert",
-      title: `${emergencyType.toUpperCase()} EMERGENCY NEARBY`,
-      message: `Someone needs help with a ${emergencyType} emergency near ${address}. Can you respond?`,
-    }));
+    console.log(`Found ${nearbyUsers.length} nearby users`);
 
-    if (notifications.length > 0) {
-      await Notification.insertMany(notifications);
+    // Create notifications for nearby users
+    for (const user of nearbyUsers) {
+      await createNotification(user._id, {
+        emergencyId: emergency._id,
+        type: "emergency_alert",
+        title: `${emergencyType.toUpperCase()} EMERGENCY NEARBY`,
+        message: `Someone needs help with a ${emergencyType} emergency near ${address}. Can you respond?`,
+        priority: "high",
+        actionRequired: true,
+        actionUrl: `/emergency/${emergency._id}`,
+      });
     }
 
-    // 🔔 Emit socket events to nearby users
+    // Create notification for emergency creator
+    await createNotification(userId, {
+      emergencyId: emergency._id,
+      type: "emergency_created",
+      title: "Your emergency was created",
+      message: `Your ${emergencyType} emergency has been logged. Nearby responders are being alerted.`,
+      priority: "medium",
+    });
+
+    // Emit socket events to nearby users
     nearbyUsers.forEach((user) => {
-      emitToUser(user._id,NEW_EMERGENCY, {
+      emitToUser(user._id, EVENTS.NEW_EMERGENCY, {
         emergency: {
           _id: emergency._id,
           emergencyType: emergency.emergencyType,
@@ -130,11 +215,11 @@ const createEmergency = async (req, res) => {
 
     // Broadcast to everyone
     emitToAll(EVENTS.EMERGENCY_CREATED, {
-  emergencyId: emergency._id,
-  emergencyType: emergency.emergencyType,
-  createdBy: emergency.createdBy, // important!
-  location: emergency.location,   // full object
-});
+      emergencyId: emergency._id,
+      emergencyType: emergency.emergencyType,
+      createdBy: emergency.createdBy,
+      location: emergency.location,
+    });
 
     return successResponse(
       res,
@@ -147,6 +232,7 @@ const createEmergency = async (req, res) => {
     return errorResponse(res, "Failed to create emergency", 500, error);
   }
 };
+
 const getActiveEmergencies = async (req, res) => {
   try {
     const emergencies = await Emergency.find({
@@ -161,6 +247,7 @@ const getActiveEmergencies = async (req, res) => {
     return errorResponse(res, "Failed to retrieve emergencies", 500, error);
   }
 };
+
 const getNearbyEmergencies = async (req, res) => {
   try {
     const { longitude, latitude, maxDistance = 5000 } = req.query;
@@ -190,7 +277,6 @@ const getNearbyEmergencies = async (req, res) => {
   }
 };
 
-// Get emergency details
 const getEmergency = async (req, res) => {
   try {
     const { emergencyId } = req.params;
@@ -214,7 +300,7 @@ const getEmergency = async (req, res) => {
 const respondToEmergency = async (req, res) => {
   try {
     const { emergencyId } = req.params;
-    const userId = req.userId;
+    const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(emergencyId)) {
       return errorResponse(res, "Invalid emergency ID", 400);
@@ -256,50 +342,44 @@ const respondToEmergency = async (req, res) => {
       emergency.status = "responding";
     }
 
-    // 🚗 ETA calculation via Google Directions API
+    // ETA calculation using OSRM
     try {
       const user = await User.findById(userId).select("currentLocation");
       if (user?.currentLocation?.coordinates) {
-        const [lng, lat] = user.currentLocation.coordinates;
-        const [emLng, emLat] = emergency.location.coordinates;
+        const [startLng, startLat] = user.currentLocation.coordinates;
+        const [endLng, endLat] = emergency.location.coordinates;
 
-        const dirRes = await axios.get(
-          `https://maps.googleapis.com/maps/api/directions/json?origin=${lat},${lng}&destination=${emLat},${emLng}&key=${AIzaSyBX2dkhTiyuh0Yji3uTeiuFy51BaeqXgCk}}`
-        );
-
-        const route = dirRes.data?.routes?.[0];
-        if (route && route.legs?.[0]) {
-          const etaSeconds = route.legs[0].duration.value;
-          const etaTimestamp = new Date(Date.now() + etaSeconds * 1000);
-
+        const duration = await getDirections(startLng, startLat, endLng, endLat);
+        
+        if (duration) {
           const idx = emergency.responders.findIndex(
             (r) => r.userId.toString() === userId
           );
           if (idx !== -1) {
             emergency.responders[idx].eta = {
-              seconds: etaSeconds,
-              timestamp: etaTimestamp,
+              seconds: duration,
+              timestamp: new Date(Date.now() + duration * 1000),
             };
           }
         }
       }
     } catch (err) {
-      console.error("Google ETA calculation failed:", err.message);
+      console.error("ETA calculation failed:", err.message);
     }
 
     await emergency.save();
 
     // Notify creator
-    await Notification.create({
-      userId: emergency.createdBy,
+    await createNotification(emergency.createdBy, {
       emergencyId: emergency._id,
       type: "response_update",
       title: "Responder on the way",
       message: "A responder is on the way to help you.",
+      priority: "high",
     });
 
     // Emit sockets
-    emitToUser(emergency.createdBy, RESPONDER_ADDED, {
+    emitToUser(emergency.createdBy, EVENTS.RESPONDER_ADDED, {
       emergencyId: emergency._id,
       responder: {
         _id: userId,
@@ -307,7 +387,7 @@ const respondToEmergency = async (req, res) => {
       },
     });
 
-    emitToEmergency(emergencyId, RESPONDER_UPDATED, {
+    emitToEmergency(emergencyId, EVENTS.RESPONDER_UPDATED, {
       emergencyId: emergency._id,
       responder: {
         _id: userId,
@@ -326,7 +406,7 @@ const updateEmergencyStatus = async (req, res) => {
   try {
     const { emergencyId } = req.params;
     const { status } = req.body;
-    const userId = req.userId;
+    const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(emergencyId)) {
       return errorResponse(res, "Invalid emergency ID", 400);
@@ -368,10 +448,23 @@ const updateEmergencyStatus = async (req, res) => {
 
     await emergency.save();
 
+    // Notify all responders and creator
+    const notificationUsers = [emergency.createdBy, ...emergency.responders.map(r => r.userId)];
+    
+    for (const userId of notificationUsers) {
+      await createNotification(userId, {
+        emergencyId: emergency._id,
+        type: "response_update",
+        title: `Emergency status updated`,
+        message: `Emergency status has been updated to: ${status}`,
+        priority: status === "resolved" ? "high" : "medium",
+      });
+    }
+
     // Emit socket event to all responders and the creator
     emitToEmergency(
       emergencyId,
-      EMERGENCY_STATUS_UPDATED,
+      EVENTS.EMERGENCY_STATUS_UPDATED,
       {
         emergencyId: emergency._id,
         status: emergency.status,
@@ -381,7 +474,7 @@ const updateEmergencyStatus = async (req, res) => {
 
     // If resolved, also broadcast to all
     if (status === "resolved") {
-      emitToAll(EMERGENCY_RESOLVED, {
+      emitToAll(EVENTS.EMERGENCY_RESOLVED, {
         emergencyId: emergency._id,
       });
     }
@@ -396,4 +489,97 @@ const updateEmergencyStatus = async (req, res) => {
     return errorResponse(res, "Failed to update emergency status", 500, error);
   }
 };
-module.exports={createEmergency,getActiveEmergencies,getEmergency,getNearbyEmergencies,respondToEmergency,updateEmergencyStatus}
+
+// Get user notifications
+const getUserNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { page = 1, limit = 10, status, type } = req.query;
+    
+    const query = { userId };
+    
+    if (status) {
+      query.status = status;
+    }
+    
+    if (type) {
+      query.type = type;
+    }
+    
+    const options = {
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      sort: { createdAt: -1 },
+      populate: {
+        path: 'emergencyId',
+        select: 'emergencyType status location'
+      }
+    };
+    
+    // Using mongoose-paginate-v2 for pagination
+    const notifications = await Notification.paginate(query, options);
+    
+    return successResponse(res, notifications, "Notifications retrieved successfully");
+  } catch (error) {
+    console.error("Error retrieving notifications:", error);
+    return errorResponse(res, "Failed to retrieve notifications", 500, error);
+  }
+};
+
+// Mark notification as read
+const markNotificationAsRead = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user._id;
+    
+    const notification = await Notification.findOneAndUpdate(
+      { _id: notificationId, userId },
+      { 
+        status: "read",
+        readAt: new Date()
+      },
+      { new: true }
+    );
+    
+    if (!notification) {
+      return errorResponse(res, "Notification not found", 404);
+    }
+    
+    return successResponse(res, notification, "Notification marked as read");
+  } catch (error) {
+    console.error("Error marking notification as read:", error);
+    return errorResponse(res, "Failed to mark notification as read", 500, error);
+  }
+};
+
+// Mark all notifications as read
+const markAllNotificationsAsRead = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    const result = await Notification.updateMany(
+      { userId, status: { $ne: "read" } },
+      { 
+        status: "read",
+        readAt: new Date()
+      }
+    );
+    
+    return successResponse(res, { count: result.modifiedCount }, "All notifications marked as read");
+  } catch (error) {
+    console.error("Error marking all notifications as read:", error);
+    return errorResponse(res, "Failed to mark all notifications as read", 500, error);
+  }
+};
+
+module.exports = {
+  createEmergency,
+  getActiveEmergencies,
+  getEmergency,
+  getNearbyEmergencies,
+  respondToEmergency,
+  updateEmergencyStatus,
+  getUserNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead
+};

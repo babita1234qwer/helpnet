@@ -10,12 +10,37 @@ const JWT_SECRET = "01b0142fc8369a6b8046bc0f6fbbda6b910b173fa0b5ae6af833cb48107a
 const register = async (req, res) => {
     try {
         validate(req.body);
-        const { name, email, password } = req.body;
+        const { name, email, password, phone, skills, notificationPreferences } = req.body;
 
-        req.body.password = await bcrypt.hash(password, 10);
-        req.body.role = "user";
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        // Create user object without currentLocation
+        const userData = {
+            name,
+            email,
+            password: hashedPassword,
+            phone: phone || '',
+            skills: skills || [],
+            notificationPreferences: notificationPreferences || {
+                push: true,
+                email: true,
+                sms: false,
+                emergencyAlerts: true,
+                responseUpdates: true,
+                systemNotifications: true,
+            },
+            // Explicitly set other fields to their defaults
+            isAuthenticated: false,
+            availabilityStatus: true,
+            trustScore: 3,
+            responseHistory: [],
+            certifications: [],
+            deviceTokens: [],
+            // Note: currentLocation is not included - it will be undefined
+        };
 
-        const user = await User.create(req.body);
+        const user = await User.create(userData);
 
         const token = jwt.sign(
             { _id: user._id, email},
@@ -27,7 +52,10 @@ const register = async (req, res) => {
             name: user.name,
             email: user.email,
             _id: user._id,
-    
+            phone: user.phone,
+            skills: user.skills,
+            notificationPreferences: user.notificationPreferences,
+            // Don't include currentLocation since it's not set
         };
 
         res.cookie('token', token, {
@@ -65,7 +93,11 @@ const login = async (req, res) => {
             name: user.name,
             email: user.email,
             _id: user._id,
-            
+            phone: user.phone,
+            skills: user.skills,
+            notificationPreferences: user.notificationPreferences,
+            // Include currentLocation only if it exists
+            ...(user.currentLocation && { currentLocation: user.currentLocation })
         };
 
         const token = jwt.sign(
@@ -112,10 +144,24 @@ const adminregister = async (req, res) => {
         validate(req.body);
         const { name, email, password } = req.body;
 
-        req.body.password = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(password, 10);
         
+        const userData = {
+            name,
+            email,
+            password: hashedPassword,
+            role: "admin",
+            // Explicitly set other fields to their defaults
+            isAuthenticated: false,
+            availabilityStatus: true,
+            trustScore: 3,
+            responseHistory: [],
+            certifications: [],
+            deviceTokens: [],
+            // Note: currentLocation is not included
+        };
 
-        const user = await User.create(req.body);
+        const user = await User.create(userData);
 
         const token = jwt.sign(
             { _id: user._id, email, role: "admin" },
