@@ -86,17 +86,27 @@ const userSchema = new Schema(
       },
     ],
 
-    // Modified currentLocation field - no default coordinates
+    // Modified currentLocation field - completely optional
     currentLocation: {
       type: {
         type: String,
         enum: ["Point"],
-        default: "Point",
+        required: function() { return !!this.coordinates; } // Only required if coordinates exist
       },
       coordinates: {
         type: [Number], // [longitude, latitude]
-        // Removed default: [0, 0]
+        validate: {
+          validator: function(coords) {
+            // Only validate if coordinates are provided
+            if (!coords || coords.length === 0) return true;
+            return coords.length === 2 && 
+                   coords[0] >= -180 && coords[0] <= 180 && 
+                   coords[1] >= -90 && coords[1] <= 90;
+          },
+          message: "Invalid coordinates"
+        }
       },
+      // Removed lastUpdated from currentLocation subdocument
     },
     lastUpdated: {
       type: Date,
@@ -133,6 +143,18 @@ const userSchema = new Schema(
 
 // Geospatial index for location-based queries
 userSchema.index({ "currentLocation": "2dsphere" }, { sparse: true }); // Added sparse option
+
+// Pre-save hook to ensure currentLocation is properly set
+userSchema.pre('save', function(next) {
+  // If coordinates are [0,0] or empty, remove the currentLocation field entirely
+  if (this.currentLocation && this.currentLocation.coordinates) {
+    const coords = this.currentLocation.coordinates;
+    if (coords.length === 2 && coords[0] === 0 && coords[1] === 0) {
+      this.currentLocation = undefined;
+    }
+  }
+  next();
+});
 
 // Method to check if user wants notifications of a specific type
 userSchema.methods.wantsNotification = function(type) {

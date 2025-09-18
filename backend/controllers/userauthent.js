@@ -10,12 +10,12 @@ const JWT_SECRET = "01b0142fc8369a6b8046bc0f6fbbda6b910b173fa0b5ae6af833cb48107a
 const register = async (req, res) => {
     try {
         validate(req.body);
-        const { name, email, password, phone, skills, notificationPreferences } = req.body;
+        const { name, email, password, phone, skills, notificationPreferences, currentLocation } = req.body;
 
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        // Create user object without currentLocation
+        // Create user object without currentLocation initially
         const userData = {
             name,
             email,
@@ -30,14 +30,20 @@ const register = async (req, res) => {
                 responseUpdates: true,
                 systemNotifications: true,
             },
-            // Explicitly set other fields to their defaults
+            // Set default values for other fields
             isAuthenticated: false,
             availabilityStatus: true,
             trustScore: 3,
             responseHistory: [],
             certifications: [],
             deviceTokens: [],
-            // Note: currentLocation is not included - it will be undefined
+            // IMPORTANT: Only include currentLocation if it has valid coordinates
+            ...(currentLocation && 
+               currentLocation.coordinates && 
+               currentLocation.coordinates.length === 2 && 
+               !(currentLocation.coordinates[0] === 0 && currentLocation.coordinates[1] === 0) && {
+                currentLocation: currentLocation
+            })
         };
 
         const user = await User.create(userData);
@@ -55,7 +61,8 @@ const register = async (req, res) => {
             phone: user.phone,
             skills: user.skills,
             notificationPreferences: user.notificationPreferences,
-            // Don't include currentLocation since it's not set
+            // Only include location if it exists and is valid
+            ...(user.currentLocation && { currentLocation: user.currentLocation })
         };
 
         res.cookie('token', token, {
@@ -71,7 +78,6 @@ const register = async (req, res) => {
         res.status(400).send({ message: err.message });
     }
 };
-
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;

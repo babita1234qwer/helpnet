@@ -52,6 +52,9 @@ function Signup() {
     responseUpdates: true,
     systemNotifications: true,
   });
+  const [location, setLocation] = useState(null);
+  const [locationError, setLocationError] = useState(null);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   const {
     register,
@@ -72,6 +75,31 @@ function Signup() {
       navigate('/');
     }
   }, [isAuthenticated, navigate]);
+
+  // Get user location automatically
+  useEffect(() => {
+    if (navigator.geolocation) {
+      setLocationLoading(true);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          console.log('Geolocation success:', position.coords);
+          setLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+          setLocationLoading(false);
+        },
+        (error) => {
+          console.log('Geolocation error:', error);
+          setLocationError(error.message);
+          setLocationLoading(false);
+          // Don't set location if there's an error
+        }
+      );
+    } else {
+      setLocationError('Geolocation is not supported by your browser');
+    }
+  }, []);
 
   const handleSkillToggle = (skill) => {
     const updatedSkills = selectedSkills.includes(skill)
@@ -94,6 +122,8 @@ function Signup() {
 
   const submitteddata = async (data) => {
     try {
+      console.log('Location in registration:', location);
+      
       // Format data to match backend schema
       const formattedData = {
         name: data.name,
@@ -102,12 +132,17 @@ function Signup() {
         phone: data.phone || '',
         skills: data.skills || [],
         notificationPreferences: data.notificationPreferences,
+        // Only include location if it's valid and not [0,0]
+        ...(location && 
+           location.latitude !== 0 && 
+           location.longitude !== 0 && {
+          currentLocation: {
+            type: "Point",
+            coordinates: [location.longitude, location.latitude]
+          }
+        }),
         // Set default values for other fields
         isAuthenticated: false,
-        currentLocation: {
-          type: "Point",
-          coordinates: [0, 0],
-        },
         lastUpdated: new Date(),
         availabilityStatus: true,
         trustScore: 3,
@@ -116,14 +151,20 @@ function Signup() {
         deviceTokens: [],
       };
 
+      console.log('Sending registration data:', formattedData);
+
       const resultAction = await dispatch(registerUser(formattedData));
       if (registerUser.rejected.match(resultAction)) {
         setError('root', {
           type: 'manual',
           message: resultAction.payload || 'Signup failed',
         });
+      } else {
+        // Redirect to dashboard after successful registration
+        navigate('/');
       }
     } catch (error) {
+      console.error('Registration error:', error);
       setError('root', {
         type: 'manual',
         message: 'Something went wrong. Try again later.',
@@ -143,9 +184,28 @@ function Signup() {
 
         {errors.root && (
           <div className="text-red-500 text-sm mb-4 text-center">
-            {errors.root.message}
+            {typeof errors.root.message === 'string' ? errors.root.message : 'An error occurred'}
           </div>
         )}
+
+        {/* Location status */}
+        <div className="mb-4 p-3 bg-neutral-700 rounded-lg">
+          <h3 className="text-sm font-semibold text-gray-300 mb-2">Location Access</h3>
+          {locationLoading && (
+            <p className="text-blue-400 text-sm">Getting your location...</p>
+          )}
+          {locationError && (
+            <p className="text-yellow-400 text-sm">Location access denied: {locationError}</p>
+          )}
+          {location && (
+            <p className="text-green-400 text-sm">
+              Location detected: {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+            </p>
+          )}
+          {!location && !locationLoading && !locationError && (
+            <p className="text-gray-400 text-sm">Location not available</p>
+          )}
+        </div>
 
         <form className="w-full" onSubmit={handleSubmit(submitteddata)}>
           <div className="mb-4">

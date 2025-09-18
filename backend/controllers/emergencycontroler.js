@@ -162,11 +162,40 @@ const createEmergency = async (req, res) => {
 
     await emergency.save();
 
-    // Find nearby users (within 5km, updated within 30 mins)
-    const nearbyUsers = await User.find({
-      availabilityStatus: true,
-      lastUpdated: { $gte: new Date(Date.now() - 30 * 60 * 1000) },
+    // Debug: Check total users with location
+    const totalUsersWithLocation = await User.countDocuments({
+      currentLocation: { $exists: true, $ne: null }
+    });
+    console.log(`Total users with location: ${totalUsersWithLocation}`);
+
+    // Debug: Check total available users
+    const totalAvailableUsers = await User.countDocuments({
+      availabilityStatus: true
+    });
+    console.log(`Total available users: ${totalAvailableUsers}`);
+
+    // Debug: Check users with location within 50km (for testing)
+    const usersWithin50km = await User.countDocuments({
       currentLocation: {
+        $geoWithin: {
+          $centerSphere: [
+            [parseFloat(longitude), parseFloat(latitude)],
+            50000 / 6378137 // 50km in radians
+          ]
+        }
+      }
+    });
+    console.log(`Users within 50km: ${usersWithin50km}`);
+
+    // Find nearby users with multiple fallback strategies
+    let nearbyUsers = [];
+    
+    // Strategy 1: Strict query (all conditions)
+    nearbyUsers = await User.find({
+      availabilityStatus: true,
+      currentLocation: {
+        $exists: true,
+        $ne: null,
         $geoWithin: {
           $centerSphere: [
             [parseFloat(longitude), parseFloat(latitude)],
@@ -175,20 +204,77 @@ const createEmergency = async (req, res) => {
         }
       }
     });
+    console.log(nearbyUsers);
+    console.log(`Strategy 1 (5km, available): Found ${nearbyUsers.length} nearby users`);
 
-    console.log(`Found ${nearbyUsers.length} nearby users`);
+    // Strategy 2: If no users found, expand radius to 20km
+    if (nearbyUsers.length === 0) {
+      nearbyUsers = await User.find({
+        availabilityStatus: true,
+        currentLocation: {
+          $exists: true,
+          $ne: null,
+          $geoWithin: {
+            $centerSphere: [
+              [parseFloat(longitude), parseFloat(latitude)],
+              20000 / 6378137 // 20km in radians
+            ]
+          }
+        }
+      });
+      console.log(`Strategy 2 (20km, available): Found ${nearbyUsers.length} nearby users`);
+    }
+
+    // Strategy 3: If still no users, include unavailable users
+    if (nearbyUsers.length === 0) {
+      nearbyUsers = await User.find({
+        currentLocation: {
+          $exists: true,
+          $ne: null,
+          $geoWithin: {
+            $centerSphere: [
+              [parseFloat(longitude), parseFloat(latitude)],
+              20000 / 6378137 // 20km in radians
+            ]
+          }
+        }
+      });
+      console.log(`Strategy 3 (20km, all users): Found ${nearbyUsers.length} nearby users`);
+    }
+
+    // Strategy 4: If still no users, expand radius to 50km
+    if (nearbyUsers.length === 0) {
+      nearbyUsers = await User.find({
+        currentLocation: {
+          $exists: true,
+          $ne: null,
+          $geoWithin: {
+            $centerSphere: [
+              [parseFloat(longitude), parseFloat(latitude)],
+              50000 / 6378137 // 50km in radians
+            ]
+          }
+        }
+      });
+      console.log(`Strategy 4 (50km, all users): Found ${nearbyUsers.length} nearby users`);
+    }
 
     // Create notifications for nearby users
-    for (const user of nearbyUsers) {
-      await createNotification(user._id, {
-        emergencyId: emergency._id,
-        type: "emergency_alert",
-        title: `${emergencyType.toUpperCase()} EMERGENCY NEARBY`,
-        message: `Someone needs help with a ${emergencyType} emergency near ${address}. Can you respond?`,
-        priority: "high",
-        actionRequired: true,
-        actionUrl: `/emergency/${emergency._id}`,
-      });
+    if (nearbyUsers.length > 0) {
+      console.log(`Creating notifications for ${nearbyUsers.length} nearby users`);
+      for (const user of nearbyUsers) {
+        await createNotification(user._id, {
+          emergencyId: emergency._id,
+          type: "emergency_alert",
+          title: `${emergencyType.toUpperCase()} EMERGENCY NEARBY`,
+          message: `Someone needs help with a ${emergencyType} emergency near ${address}. Can you respond?`,
+          priority: "high",
+          actionRequired: true,
+          actionUrl: `/emergency/${emergency._id}`,
+        });
+      }
+    } else {
+      console.log("No nearby users found to notify");
     }
 
     // Create notification for emergency creator

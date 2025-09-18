@@ -2,7 +2,9 @@ const express=require('express');
 const app=express();
 const http = require('http');
 const redisclient =require("./config/redis");
+const locationuser= require('./routes/location');
 const { Server } = require('socket.io');
+
 const server = http.createServer(app);
 
 const path = require('path');
@@ -33,6 +35,7 @@ app.use(express.json());
 app.use(cookieparser());
 app.use('/user',authrouter);
 app.use('/emergency', emergencyRouter);
+app.use('/location',locationuser);
 const initialiseconnection=async()=>{
       try{
         await Promise.all([main(),redisclient.connect()]);
@@ -40,8 +43,8 @@ const initialiseconnection=async()=>{
        // app.listen(process.env.PORT,()=>{
            // console.log("Server is running on port",process.env.PORT);
        // })
-       server.listen(3000, () => {
-  console.log("Server running on port", 3000);
+       server.listen(3001, () => {
+  console.log("Server running on port", 3001);
 });
       }
         catch(err){
