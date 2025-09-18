@@ -92,14 +92,26 @@ const getDirections = async (startLng, startLat, endLng, endLat) => {
   return null;
 };
 
-// Helper function to create and send notifications
+// Helper function to create and send notificationsc
+
 const createNotification = async (userId, notificationData) => {
   try {
+    console.log(`Creating notification for user ${userId} of type: ${notificationData.type}`);
+    
     const user = await User.findById(userId);
-    if (!user) return null;
+    if (!user) {
+      console.log(`User ${userId} not found in database`);
+      return null;
+    }
+    
+    console.log(`User found: ${user.name || user._id}`);
     
     // Check if user wants this type of notification
-    if (!user.wantsNotification(notificationData.type)) {
+    const wantsNotification = user.wantsNotification(notificationData.type);
+    console.log(`User wants ${notificationData.type} notification: ${wantsNotification}`);
+    
+    if (!wantsNotification) {
+      console.log(`User ${userId} has disabled ${notificationData.type} notifications`);
       return null;
     }
     
@@ -108,30 +120,28 @@ const createNotification = async (userId, notificationData) => {
       ...notificationData,
     });
     
-    await notification.save();
+    const savedNotification = await notification.save();
+    console.log(`Notification saved with ID: ${savedNotification._id}`);
     
     // Send real-time notification via socket
     emitToUser(userId, EVENTS.NOTIFICATION_RECEIVED, {
       notification: {
-        _id: notification._id,
-        type: notification.type,
-        title: notification.title,
-        message: notification.message,
-        priority: notification.priority,
-        createdAt: notification.createdAt,
+        _id: savedNotification._id,
+        type: savedNotification.type,
+        title: savedNotification.title,
+        message: savedNotification.message,
+        priority: savedNotification.priority,
+        createdAt: savedNotification.createdAt,
       }
     });
     
-    // Here you would also integrate with push notification services
-    // like Firebase Cloud Messaging or Apple Push Notification Service
-    
-    return notification;
+    console.log(`Socket event emitted to user ${userId}`);
+    return savedNotification;
   } catch (error) {
-    console.error("Error creating notification:", error);
+    console.error(`Error creating notification for user ${userId}:`, error);
     return null;
   }
 };
-
 const createEmergency = async (req, res) => {
   try {
     const { emergencyType, description, longitude, latitude } = req.body;
@@ -164,7 +174,10 @@ const createEmergency = async (req, res) => {
 
     // Debug: Check total users with location
     const totalUsersWithLocation = await User.countDocuments({
-      currentLocation: { $exists: true, $ne: null }
+      $and: [
+        { currentLocation: { $exists: true } },
+        { currentLocation: { $ne: null } }
+      ]
     });
     console.log(`Total users with location: ${totalUsersWithLocation}`);
 
@@ -176,14 +189,20 @@ const createEmergency = async (req, res) => {
 
     // Debug: Check users with location within 50km (for testing)
     const usersWithin50km = await User.countDocuments({
-      currentLocation: {
-        $geoWithin: {
-          $centerSphere: [
-            [parseFloat(longitude), parseFloat(latitude)],
-            50000 / 6378137 // 50km in radians
-          ]
+      $and: [
+        { currentLocation: { $exists: true } },
+        { currentLocation: { $ne: null } },
+        { 
+          currentLocation: {
+            $geoWithin: {
+              $centerSphere: [
+                [parseFloat(longitude), parseFloat(latitude)],
+                50000 / 6378137 // 50km in radians
+              ]
+            }
+          }
         }
-      }
+      ]
     });
     console.log(`Users within 50km: ${usersWithin50km}`);
 
@@ -193,34 +212,41 @@ const createEmergency = async (req, res) => {
     // Strategy 1: Strict query (all conditions)
     nearbyUsers = await User.find({
       availabilityStatus: true,
-      currentLocation: {
-        $exists: true,
-        $ne: null,
-        $geoWithin: {
-          $centerSphere: [
-            [parseFloat(longitude), parseFloat(latitude)],
-            5000 / 6378137 // 5km in radians
-          ]
+      $and: [
+        { currentLocation: { $exists: true } },
+        { currentLocation: { $ne: null } },
+        { 
+          currentLocation: {
+            $geoWithin: {
+              $centerSphere: [
+                [parseFloat(longitude), parseFloat(latitude)],
+                5000 / 6378137 // 5km in radians
+              ]
+            }
+          }
         }
-      }
+      ]
     });
-    console.log(nearbyUsers);
     console.log(`Strategy 1 (5km, available): Found ${nearbyUsers.length} nearby users`);
 
     // Strategy 2: If no users found, expand radius to 20km
     if (nearbyUsers.length === 0) {
       nearbyUsers = await User.find({
         availabilityStatus: true,
-        currentLocation: {
-          $exists: true,
-          $ne: null,
-          $geoWithin: {
-            $centerSphere: [
-              [parseFloat(longitude), parseFloat(latitude)],
-              20000 / 6378137 // 20km in radians
-            ]
+        $and: [
+          { currentLocation: { $exists: true } },
+          { currentLocation: { $ne: null } },
+          { 
+            currentLocation: {
+              $geoWithin: {
+                $centerSphere: [
+                  [parseFloat(longitude), parseFloat(latitude)],
+                  20000 / 6378137 // 20km in radians
+                ]
+              }
+            }
           }
-        }
+        ]
       });
       console.log(`Strategy 2 (20km, available): Found ${nearbyUsers.length} nearby users`);
     }
@@ -228,16 +254,20 @@ const createEmergency = async (req, res) => {
     // Strategy 3: If still no users, include unavailable users
     if (nearbyUsers.length === 0) {
       nearbyUsers = await User.find({
-        currentLocation: {
-          $exists: true,
-          $ne: null,
-          $geoWithin: {
-            $centerSphere: [
-              [parseFloat(longitude), parseFloat(latitude)],
-              20000 / 6378137 // 20km in radians
-            ]
+        $and: [
+          { currentLocation: { $exists: true } },
+          { currentLocation: { $ne: null } },
+          { 
+            currentLocation: {
+              $geoWithin: {
+                $centerSphere: [
+                  [parseFloat(longitude), parseFloat(latitude)],
+                  20000 / 6378137 // 20km in radians
+                ]
+              }
+            }
           }
-        }
+        ]
       });
       console.log(`Strategy 3 (20km, all users): Found ${nearbyUsers.length} nearby users`);
     }
@@ -245,16 +275,20 @@ const createEmergency = async (req, res) => {
     // Strategy 4: If still no users, expand radius to 50km
     if (nearbyUsers.length === 0) {
       nearbyUsers = await User.find({
-        currentLocation: {
-          $exists: true,
-          $ne: null,
-          $geoWithin: {
-            $centerSphere: [
-              [parseFloat(longitude), parseFloat(latitude)],
-              50000 / 6378137 // 50km in radians
-            ]
+        $and: [
+          { currentLocation: { $exists: true } },
+          { currentLocation: { $ne: null } },
+          { 
+            currentLocation: {
+              $geoWithin: {
+                $centerSphere: [
+                  [parseFloat(longitude), parseFloat(latitude)],
+                  50000 / 6378137 // 50km in radians
+                ]
+              }
+            }
           }
-        }
+        ]
       });
       console.log(`Strategy 4 (50km, all users): Found ${nearbyUsers.length} nearby users`);
     }

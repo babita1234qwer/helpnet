@@ -44,7 +44,7 @@ const userSchema = new Schema(
         type: Boolean,
         default: false,
       },
-      emergencyAlerts: {
+      emergency_alert: {
         type: Boolean,
         default: true,
       },
@@ -158,9 +158,26 @@ userSchema.pre('save', function(next) {
 
 // Method to check if user wants notifications of a specific type
 userSchema.methods.wantsNotification = function(type) {
-  if (type === "emergency_alert" && this.notificationPreferences.emergencyAlerts) return true;
-  if (type === "response_update" && this.notificationPreferences.responseUpdates) return true;
-  if (type === "system" && this.notificationPreferences.systemNotifications) return true;
+  const preferenceMap = {
+    'emergency_alert': 'emergency_alert',
+    'response_update': 'responseUpdates',
+    'system': 'systemNotifications'
+  };
+  
+  const preferenceKey = preferenceMap[type];
+  const preferenceValue = this.notificationPreferences[preferenceKey];
+  
+  console.log(`Checking notification preference for user ${this._id}:`);
+  console.log(`- Notification type: ${type}`);
+  console.log(`- Preference key: ${preferenceKey}`);
+  console.log(`- Preference value: ${preferenceValue}`);
+  
+  if (preferenceKey && preferenceValue !== false) {
+    console.log(`- Result: User wants this notification`);
+    return true;
+  }
+  
+  console.log(`- Result: User does not want this notification`);
   return false;
 };
 
