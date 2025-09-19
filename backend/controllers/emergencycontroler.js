@@ -3,13 +3,8 @@ const Emergency = require("../models/emergency");
 const User = require("../models/user");
 const Notification = require("../models/notification");
 const axios = require("axios");
-let io = null;
-try {
-  io = require('../socket').io;
-} catch (e) {
-  // fallback: try to get from global if set
-  io = global.io || null;
-}
+const { getOpenStreetMapUrl } = require("../utils/mapHelpers");
+const socket = require('../config/socket');
 
 function successResponse(res, data, message = "Success", status = 200) {
   return res.status(status).json({
@@ -28,20 +23,29 @@ function errorResponse(res, message = "Error", status = 500, error = null) {
 }
 
 const emitToUser = (userId, event, data) => {
-  if (io) {
+  try {
+    const io = socket.getIO();
     io.to(`user:${userId}`).emit(event, data);
+  } catch (err) {
+    console.error('Error emitting to user:', err);
   }
 };
 
 const emitToEmergency = (emergencyId, event, data) => {
-  if (io) {
+  try {
+    const io = socket.getIO();
     io.to(`emergency:${emergencyId}`).emit(event, data);
+  } catch (err) {
+    console.error('Error emitting to emergency:', err);
   }
 };
 
 const emitToAll = (event, data) => {
-  if (io) {
+  try {
+    const io = socket.getIO();
     io.emit(event, data);
+  } catch (err) {
+    console.error('Error emitting to all:', err);
   }
 };
 
@@ -92,8 +96,7 @@ const getDirections = async (startLng, startLat, endLng, endLat) => {
   return null;
 };
 
-// Helper function to create and send notificationsc
-
+// Helper function to create and send notifications
 const createNotification = async (userId, notificationData) => {
   try {
     console.log(`Creating notification for user ${userId} of type: ${notificationData.type}`);
@@ -115,9 +118,23 @@ const createNotification = async (userId, notificationData) => {
       return null;
     }
     
+    let message = notificationData.message;
+    
+    // Add OpenStreetMap link if emergency location is available
+    if (notificationData.emergencyId && notificationData.type === "emergency_alert") {
+      const emergency = await Emergency.findById(notificationData.emergencyId);
+      if (emergency && emergency.location) {
+        const mapsUrl = getOpenStreetMapUrl(emergency.location);
+        if (mapsUrl) {
+          message += `\n\nView location: ${mapsUrl}`;
+        }
+      }
+    }
+    
     const notification = new Notification({
       userId,
       ...notificationData,
+      message, // Use the updated message
     });
     
     const savedNotification = await notification.save();
@@ -142,6 +159,7 @@ const createNotification = async (userId, notificationData) => {
     return null;
   }
 };
+
 const createEmergency = async (req, res) => {
   try {
     const { emergencyType, description, longitude, latitude } = req.body;
@@ -341,9 +359,13 @@ const createEmergency = async (req, res) => {
       location: emergency.location,
     });
 
+    // Add OpenStreetMap URL to response
+    const emergencyObj = emergency.toObject();
+    emergencyObj.openStreetMapUrl = getOpenStreetMapUrl(emergencyObj.location);
+
     return successResponse(
       res,
-      { emergency, notifiedUsers: nearbyUsers.length },
+      { emergency: emergencyObj, notifiedUsers: nearbyUsers.length },
       "Emergency created and nearby users notified",
       201
     );
@@ -361,7 +383,14 @@ const getActiveEmergencies = async (req, res) => {
       .populate("createdBy", "name")
       .sort({ createdAt: -1 });
 
-    return successResponse(res, emergencies, "Active emergencies retrieved");
+    // Add OpenStreetMap URL to each emergency
+    const emergenciesWithUrls = emergencies.map(emergency => {
+      const emergencyObj = emergency.toObject();
+      emergencyObj.openStreetMapUrl = getOpenStreetMapUrl(emergencyObj.location);
+      return emergencyObj;
+    });
+
+    return successResponse(res, emergenciesWithUrls, "Active emergencies retrieved");
   } catch (error) {
     console.error("Error retrieving active emergencies:", error);
     return errorResponse(res, "Failed to retrieve emergencies", 500, error);
@@ -390,7 +419,14 @@ const getNearbyEmergencies = async (req, res) => {
       .populate("createdBy", "name")
       .sort({ createdAt: -1 });
 
-    return successResponse(res, emergencies, "Nearby emergencies retrieved");
+    // Add OpenStreetMap URL to each emergency
+    const emergenciesWithUrls = emergencies.map(emergency => {
+      const emergencyObj = emergency.toObject();
+      emergencyObj.openStreetMapUrl = getOpenStreetMapUrl(emergencyObj.location);
+      return emergencyObj;
+    });
+
+    return successResponse(res, emergenciesWithUrls, "Nearby emergencies retrieved");
   } catch (error) {
     console.error("Error retrieving nearby emergencies:", error);
     return errorResponse(res, "Failed to retrieve emergencies", 500, error);
@@ -410,7 +446,11 @@ const getEmergency = async (req, res) => {
 
     if (!emergency) return errorResponse(res, "Emergency not found", 404);
 
-    return successResponse(res, emergency, "Emergency details retrieved");
+    // Add OpenStreetMap URL
+    const emergencyObj = emergency.toObject();
+    emergencyObj.openStreetMapUrl = getOpenStreetMapUrl(emergencyObj.location);
+
+    return successResponse(res, emergencyObj, "Emergency details retrieved");
   } catch (error) {
     console.error("Error retrieving emergency details:", error);
     return errorResponse(res, "Failed to retrieve emergency details", 500, error);

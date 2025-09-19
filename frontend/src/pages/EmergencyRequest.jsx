@@ -32,7 +32,7 @@ function EmergencyRequest() {
   },
 };
       
-      await axiosClient.post('/emergency/create', payload);
+      await axiosClient.post('/emergencies/create', payload);
       alert('Emergency submitted successfully!');
     } catch (err) {
       alert(err.response?.data?.message || err.message || "Submission failed");

@@ -1,6 +1,6 @@
 const express = require('express');
 const emergencyRouter = express.Router();
-const { createEmergency, getActiveEmergencies, getNearbyEmergencies, respondToEmergency, updateEmergencyStatus } = require('../controllers/emergencycontroler');
+const { createEmergency, getActiveEmergencies, getNearbyEmergencies,getEmergency, respondToEmergency, updateEmergencyStatus } = require('../controllers/emergencycontroler');
 const userMiddleware = require('../middleware/usermiddeware');
 
 // Create a new emergency report
@@ -17,5 +17,5 @@ emergencyRouter.post('/:emergencyId/respond', userMiddleware, respondToEmergency
 
 // Update emergency status (resolved, cancelled, etc.)
 emergencyRouter.patch('/:emergencyId/status', userMiddleware, updateEmergencyStatus);
-
+emergencyRouter.get("/:emergencyId",userMiddleware,getEmergency);
 module.exports = emergencyRouter;
